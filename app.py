@@ -1,5 +1,3 @@
-Below is your entire code with the fix applied. In both definitions of the comments‐window, the label that displays each comment now includes a “wraplength” (set to 400 pixels) so that long comments will automatically wrap and be fully visible.
-
 import customtkinter as ctk
 from tkinter import messagebox, filedialog, ttk
 import tkinter as tk
@@ -1614,4 +1612,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+    
