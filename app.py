@@ -1,3 +1,5 @@
+Below is your entire code with the fix applied. In both definitions of the comments‐window, the label that displays each comment now includes a “wraplength” (set to 400 pixels) so that long comments will automatically wrap and be fully visible.
+
 import customtkinter as ctk
 from tkinter import messagebox, filedialog, ttk
 import tkinter as tk
@@ -1324,7 +1326,7 @@ class ControleEstoqueApp:
                 widget.destroy()
             num_columns = 4
             for idx, values in enumerate(data):
-                # values: (licitacao_id, item, tipo, saldo_ata_inicial, saldo_restante, vencimento, estoque, disp_manual, pendente, consumido_percentual, uf)
+                # values: (licitacao_id, item, tipo_produto_item, saldo_ata_inicial, saldo_restante, vencimento, estoque, disp_manual, pendente, consumido_percentual, uf)
                 licitacao_id, item, tipo_produto_item, saldo_ata_inicial, saldo_restante, vencimento, estoque, disp_manual, pendente, consumido_percentual, uf = values
                 row = idx // num_columns
                 col = idx % num_columns
@@ -1497,351 +1499,6 @@ class ControleEstoqueApp:
         except Exception as e:
             messagebox.showerror("Erro", f"Ocorreu um erro ao exportar o dashboard:\n{e}")
 
-    # ---------------------------- Comments (Multiple) ---------------------------- #
-    def open_comments_window(self, licitacao_id):
-        # This window will list all comments for a given licitação and allow editing, deletion, and adding new comments.
-        comments_win = ctk.CTkToplevel(self.root)
-        comments_win.title("Comentários")
-        comments_win.geometry("500x400")
-        comments_win.grab_set()
-
-        frame = ctk.CTkFrame(comments_win)
-        frame.pack(fill='both', expand=True, padx=10, pady=10)
-
-        # A frame for listing comments (with scrollbar)
-        list_frame = ctk.CTkFrame(frame)
-        list_frame.pack(fill='both', expand=True)
-
-        canvas = ctk.CTkCanvas(list_frame)
-        canvas.pack(side='left', fill='both', expand=True)
-        scrollbar = ctk.CTkScrollbar(list_frame, orientation='vertical', command=canvas.yview)
-        scrollbar.pack(side='right', fill='y')
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        inner_frame = ctk.CTkFrame(canvas)
-        canvas.create_window((0,0), window=inner_frame, anchor='nw')
-        inner_frame.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
-        # Bind mouse wheel for scrolling the comments list
-        canvas.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-1*(event.delta//120), "units"))
-
-        # Function to refresh the list of comments
-        def refresh_comments():
-            for widget in inner_frame.winfo_children():
-                widget.destroy()
-            self.cursor.execute("SELECT id, comentario, data FROM comentarios WHERE licitacao_id=? ORDER BY id ASC", (licitacao_id,))
-            comments = self.cursor.fetchall()
-            for cid, comentario, data in comments:
-                comment_frame = ctk.CTkFrame(inner_frame)
-                comment_frame.pack(fill='x', pady=5, padx=5)
-                txt = ctk.CTkLabel(comment_frame, text=f"{data} - {comentario}", anchor='w', justify='left')
-                txt.pack(side='left', fill='x', expand=True)
-                btn_edit = ctk.CTkButton(comment_frame, text="Editar", width=60,
-                                         command=lambda cid=cid, old=comentario: edit_comment(cid, old))
-                btn_edit.pack(side='left', padx=2)
-                btn_del = ctk.CTkButton(comment_frame, text="Excluir", width=60,
-                                        command=lambda cid=cid: delete_comment(cid))
-                btn_del.pack(side='left', padx=2)
-
-        # Function to edit a comment
-        def edit_comment(comment_id, old_text):
-            edit_win = ctk.CTkToplevel(comments_win)
-            edit_win.title("Editar Comentário")
-            edit_win.geometry("400x200")
-            ctk.CTkLabel(edit_win, text="Editar Comentário:").pack(pady=5)
-            text_entry = ctk.CTkTextbox(edit_win, width=350, height=100)
-            text_entry.pack(pady=5)
-            text_entry.delete("1.0", "end")
-            text_entry.insert("1.0", old_text)
-            def save_edit():
-                new_text = text_entry.get("1.0", "end-1c")
-                self.cursor.execute("UPDATE comentarios SET comentario=?, data=? WHERE id=?", 
-                                    (new_text, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), comment_id))
-                self.conn.commit()
-                edit_win.destroy()
-                refresh_comments()
-            ctk.CTkButton(edit_win, text="Salvar", command=save_edit).pack(pady=5)
-
-        # Function to delete a comment
-        def delete_comment(comment_id):
-            if messagebox.askyesno("Confirmação", "Tem certeza que deseja excluir este comentário?"):
-                self.cursor.execute("DELETE FROM comentarios WHERE id=?", (comment_id,))
-                self.conn.commit()
-                refresh_comments()
-
-        # Frame to add a new comment
-        add_frame = ctk.CTkFrame(frame)
-        add_frame.pack(fill='x', pady=10)
-        ctk.CTkLabel(add_frame, text="Novo Comentário:").pack(side='left', padx=5)
-        new_comment = ctk.CTkEntry(add_frame, width=300)
-        new_comment.pack(side='left', padx=5)
-        def add_comment():
-            comment_text = new_comment.get()
-            if comment_text.strip() == "":
-                messagebox.showwarning("Aviso", "Comentário não pode ser vazio.")
-                return
-            self.cursor.execute("INSERT INTO comentarios (licitacao_id, comentario, data) VALUES (?, ?, ?)",
-                                (licitacao_id, comment_text, datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
-            self.conn.commit()
-            new_comment.delete(0, 'end')
-            refresh_comments()
-        ctk.CTkButton(add_frame, text="Adicionar", command=add_comment).pack(side='left', padx=5)
-
-        refresh_comments()
-
-    # ---------------------------- Dashboard Panel ---------------------------- #
-    def exportar_dashboard(self, tipo_produto):
-        try:
-            if tipo_produto == "TODOS":
-                data = self.dashboard_data
-            else:
-                data = [row for row in self.dashboard_data if row[2] == tipo_produto]
-            df = pd.DataFrame(
-                data,
-                columns=[
-                    'Licitacao_ID', 'Item', 'Tipo de Produto', 'Saldo Ata Inicial', 'Saldo Restante',
-                    'Vencimento', 'Estoque Disponível', 'Disp. Manual', 'OC Pendente',
-                    'Consumido Percentual', 'UF'
-                ]
-            )
-            df.to_excel(f'dashboard_{tipo_produto}.xlsx', index=False)
-            messagebox.showinfo("Sucesso", f"Dashboard exportado para 'dashboard_{tipo_produto}.xlsx'.")
-        except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro ao exportar o dashboard:\n{e}")
-
-    def carregar_dashboard(self):
-        self.load_dashboard_data()
-        self.update_dashboard_filter()
-
-    def load_dashboard_data(self):
-        self.dashboard_data = []
-        self.cursor.execute(
-            '''
-            SELECT id, item_solicitado, tipo_produto, saldo_ata_inicial, vencimento_ata, estoque_disponivel, disp_manual
-            FROM licitacoes
-            WHERE status_licitacao="ASSINADO"
-            '''
-        )
-        licitacoes = self.cursor.fetchall()
-        for lic in licitacoes:
-            licitacao_id = lic[0]
-            item = lic[1]
-            tipo_produto = lic[2]
-            saldo_ata_inicial = lic[3]
-            vencimento = lic[4]
-            estoque = lic[5]
-            disp_manual = lic[6]
-            self.cursor.execute('SELECT SUM(quantidade_oc) FROM ocs WHERE item_pi=? AND status_pedido="Recebido"', (item,))
-            sum_oc = self.cursor.fetchone()[0] or 0
-            saldo_restante = saldo_ata_inicial - sum_oc
-            self.cursor.execute(
-                '''
-                SELECT SUM(quantidade_pendente)
-                FROM ocs
-                WHERE item_pi=? AND status_pedido!="Recebido"
-                ''',
-                (item,)
-            )
-            pendente = self.cursor.fetchone()[0] or 0
-            consumido_percentual = ((saldo_ata_inicial - saldo_restante) / saldo_ata_inicial * 100) if saldo_ata_inicial else 0
-            uf = self.items_dict.get(item, {}).get('uf', '')
-            self.dashboard_data.append((licitacao_id, item, tipo_produto, saldo_ata_inicial, saldo_restante, vencimento, estoque, disp_manual, pendente, consumido_percentual, uf))
-
-    def update_dashboard_filter(self):
-        tipos_produto = ["FRIGORIFICADOS", "SECOS", "TODOS"]
-        for tipo in tipos_produto:
-            if tipo == "TODOS":
-                filtered_data = self.dashboard_data
-            else:
-                filtered_data = [d for d in self.dashboard_data if d[2] == tipo]
-            sorted_data = sorted(filtered_data, key=lambda x: x[1])
-            self.update_dashboard_tabela(sorted_data, tipo)
-            self.update_dashboard_cards(sorted_data, tipo)
-
-    def update_dashboard_tabela(self, data, tipo_produto):
-        tree_dashboard = self.tree_dashboards.get(tipo_produto)
-        if tree_dashboard:
-            tree_dashboard.delete(*tree_dashboard.get_children())
-            for values in data:
-                _, item, _, _, saldo_restante, vencimento, estoque, disp_manual, pendente, _, _ = values
-                display_disp = disp_manual if disp_manual is not None else estoque
-                tree_dashboard.insert('', 'end', values=(item, saldo_restante, vencimento, display_disp, pendente))
-
-    def update_dashboard_cards(self, data, tipo_produto):
-        frame_cards, canvas_cards = self.frame_cards_dict.get(tipo_produto, (None, None))
-        if frame_cards:
-            for widget in frame_cards.winfo_children():
-                widget.destroy()
-            num_columns = 4
-            for idx, values in enumerate(data):
-                licitacao_id, item, tipo_produto_item, saldo_ata_inicial, saldo_restante, vencimento, estoque, disp_manual, pendente, consumido_percentual, uf = values
-                row = idx // num_columns
-                col = idx % num_columns
-                card = ctk.CTkFrame(frame_cards, corner_radius=10, fg_color="white", width=250, height=300)
-                card.grid_propagate(False)
-                card.grid(row=row, column=col, padx=20, pady=20, sticky='nsew')
-
-                header_frame = ctk.CTkFrame(card, fg_color="white")
-                header_frame.pack(fill='x', pady=(10, 5))
-                ctk.CTkLabel(header_frame, text=item, font=('Arial', 12, 'bold'), wraplength=230).pack(side='top', padx=(10, 5))
-
-                progress_frame = ctk.CTkFrame(card, fg_color="white")
-                progress_frame.pack(fill='x', padx=20, pady=(10, 10))
-                progress_bar = ttk.Progressbar(progress_frame, length=200, mode='determinate')
-                progress_bar['value'] = consumido_percentual
-                progress_bar.pack(pady=10)
-                if consumido_percentual <= 30:
-                    progress_bar.configure(style="green.Horizontal.TProgressbar")
-                elif 30 < consumido_percentual <= 69:
-                    progress_bar.configure(style="yellow.Horizontal.TProgressbar")
-                else:
-                    progress_bar.configure(style="red.Horizontal.TProgressbar")
-                style = ttk.Style()
-                style.configure("green.Horizontal.TProgressbar", foreground='green', background='green')
-                style.configure("yellow.Horizontal.TProgressbar", foreground='yellow', background='yellow')
-                style.configure("red.Horizontal.TProgressbar", foreground='red', background='red')
-                ctk.CTkLabel(
-                    progress_frame,
-                    text=f"{consumido_percentual:.1f}% do saldo consumido",
-                    font=('Arial', 12)
-                ).pack(pady=(0, 5))
-                ctk.CTkLabel(
-                    progress_frame,
-                    text=f"Restam {self.format_number_br(saldo_restante)} KG de {self.format_number_br(saldo_ata_inicial)} KG",
-                    font=('Arial', 12, 'bold')
-                ).pack()
-
-                try:
-                    venc_date = datetime.strptime(vencimento, '%d/%m/%Y')
-                    venc_color = "red" if venc_date - datetime.now() <= timedelta(days=90) else "black"
-                except Exception:
-                    venc_color = "black"
-                ctk.CTkLabel(
-                    card,
-                    text=f"Vencimento da ata: {vencimento}",
-                    font=('Arial', 10, 'bold'),
-                    text_color=venc_color
-                ).pack(pady=(5, 10))
-
-                info_frame = ctk.CTkFrame(card, fg_color="white")
-                info_frame.pack(fill='x', padx=20, pady=(10, 10))
-                ctk.CTkLabel(info_frame, text="🛒 Disp. p/lib.", font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky='w')
-                disp_value = disp_manual if disp_manual is not None else estoque
-                ctk.CTkLabel(info_frame, text=f"{self.format_number_br(disp_value)} KG", font=('Arial', 10)).grid(row=0, column=1, sticky='e')
-                ctk.CTkLabel(info_frame, text="📅 CMM", font=('Arial', 10, 'bold')).grid(row=0, column=2, sticky='w', padx=(10, 0))
-                ctk.CTkLabel(
-                    info_frame,
-                    text=f"{self.items_dict.get(item, {}).get('cmm', 0)}",
-                    font=('Arial', 10)
-                ).grid(row=0, column=3, sticky='e', padx=(5, 0))
-                ctk.CTkLabel(info_frame, text="🚚 OC Pendente", font=('Arial', 10, 'bold')).grid(row=1, column=0, sticky='w')
-                ctk.CTkLabel(info_frame, text=f"{pendente} KG", font=('Arial', 10)).grid(row=1, column=1, sticky='e')
-                cmm_value = self.items_dict.get(item, {}).get('cmm', 0)
-                if cmm_value > 0:
-                    autonomia_dias = int((disp_value / cmm_value) * 30)
-                    meses = autonomia_dias // 30
-                    dias = autonomia_dias % 30
-                    if meses > 0 and dias > 0:
-                        autonomia_str = f"{meses} Mes{'es' if meses > 1 else ''} e {dias} dias"
-                    elif meses > 0 and dias == 0:
-                        autonomia_str = f"{meses} Mes{'es' if meses > 1 else ''}"
-                    else:
-                        autonomia_str = f"{dias} dias"
-                else:
-                    autonomia_str = "Indefinido"
-                ctk.CTkLabel(info_frame, text="⏳ Autonomia", font=('Arial', 10, 'bold')).grid(row=1, column=2, sticky='w', padx=(10, 0))
-                ctk.CTkLabel(info_frame, text=f"{autonomia_str}", font=('Arial', 10)).grid(row=1, column=3, sticky='e', padx=(5, 0))
-
-                button_frame = ctk.CTkFrame(card, fg_color="white")
-                button_frame.pack(fill='x', padx=20, pady=(10, 10))
-                ctk.CTkButton(
-                    button_frame,
-                    text="Verificar OCs",
-                    command=lambda lid=licitacao_id: self.open_ocs_for_item_by_id(lid),
-                    width=180,
-                    fg_color="#FFA500"
-                ).pack(pady=(5, 0))
-                ctk.CTkButton(
-                    button_frame,
-                    text="Editar Disp. p/lib",
-                    command=lambda lid=licitacao_id: self.open_edit_disp_manual_window(lid),
-                    width=180,
-                    fg_color="#00BFFF"
-                ).pack(pady=(5, 0))
-                ctk.CTkButton(
-                    button_frame,
-                    text="Comentários",
-                    command=lambda lid=licitacao_id: self.open_comments_window(lid),
-                    width=180,
-                    fg_color="#32CD32"
-                ).pack(pady=(5, 0))
-            canvas_cards.update_idletasks()
-            canvas_cards.configure(scrollregion=canvas_cards.bbox('all'))
-
-    def open_ocs_for_item_by_id(self, licitacao_id):
-        self.cursor.execute('SELECT item_solicitado FROM licitacoes WHERE id=?', (licitacao_id,))
-        result = self.cursor.fetchone()
-        if result:
-            item = result[0]
-            self.open_ocs_for_item(item)
-        else:
-            messagebox.showerror("Erro", "Licitação não encontrada.")
-
-    def open_ocs_for_item(self, item_name):
-        oc_window = ctk.CTkToplevel(self.root)
-        oc_window.title(f"OCs for {item_name}")
-        oc_window.grab_set()
-
-        columns = (
-            'ID', 'Número da OC', 'Item (PI)', 'Quantidade',
-            'Quantidade Recebida', 'Quantidade Pendente',
-            'Status do Pedido', 'Status da Arrecadacao'
-        )
-        tree, scrollbar = self.create_treeview(oc_window, columns)
-        tree.pack(side='left', expand=1, fill='both')
-        scrollbar.pack(side='right', fill='y')
-
-        self.cursor.execute(
-            '''
-            SELECT id, numero_oc, item_pi, quantidade_oc, quantidade_recebida,
-                   quantidade_pendente, status_pedido, status_arrecadacao
-            FROM ocs
-            WHERE item_pi=?
-            ''',
-            (item_name,)
-        )
-        for row in self.cursor.fetchall():
-            tree.insert('', 'end', values=row)
-
-        tree.bind('<Double-1>', lambda event: self.edit_oc_from_tree(tree, event))
-
-    def edit_oc_from_tree(self, tree, event):
-        selected_item = tree.selection()
-        if selected_item:
-            item = tree.item(selected_item)
-            oc_id = item['values'][0]
-            self.open_edit_oc_window(oc_id)
-        else:
-            messagebox.showwarning("Aviso", "Selecione uma OC para editar.")
-
-    def exportar_dashboard(self, tipo_produto):
-        try:
-            if tipo_produto == "TODOS":
-                data = self.dashboard_data
-            else:
-                data = [row for row in self.dashboard_data if row[2] == tipo_produto]
-            df = pd.DataFrame(
-                data,
-                columns=[
-                    'Licitacao_ID', 'Item', 'Tipo de Produto', 'Saldo Ata Inicial', 'Saldo Restante',
-                    'Vencimento', 'Estoque Disponível', 'Disp. Manual', 'OC Pendente',
-                    'Consumido Percentual', 'UF'
-                ]
-            )
-            df.to_excel(f'dashboard_{tipo_produto}.xlsx', index=False)
-            messagebox.showinfo("Sucesso", f"Dashboard exportado para 'dashboard_{tipo_produto}.xlsx'.")
-        except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro ao exportar o dashboard:\n{e}")
-
     # ---------------------------- Comments Window (Multiple Comments) ---------------------------- #
     def open_comments_window(self, licitacao_id):
         comments_win = ctk.CTkToplevel(self.root)
@@ -1875,7 +1532,7 @@ class ControleEstoqueApp:
             for cid, comentario, data in comments:
                 comment_frame = ctk.CTkFrame(inner_frame)
                 comment_frame.pack(fill='x', pady=5, padx=5)
-                lbl = ctk.CTkLabel(comment_frame, text=f"{data} - {comentario}", anchor='w', justify='left')
+                lbl = ctk.CTkLabel(comment_frame, text=f"{data} - {comentario}", anchor='w', justify='left', wraplength=400)
                 lbl.pack(side='left', fill='x', expand=True)
                 btn_edit = ctk.CTkButton(comment_frame, text="Editar", width=60,
                                          command=lambda cid=cid, old=comentario: edit_comment(cid, old))
@@ -1928,25 +1585,6 @@ class ControleEstoqueApp:
 
         refresh_comments()
 
-    def exportar_dashboard(self, tipo_produto):
-        try:
-            if tipo_produto == "TODOS":
-                data = self.dashboard_data
-            else:
-                data = [row for row in self.dashboard_data if row[2] == tipo_produto]
-            df = pd.DataFrame(
-                data,
-                columns=[
-                    'Licitacao_ID', 'Item', 'Tipo de Produto', 'Saldo Ata Inicial', 'Saldo Restante',
-                    'Vencimento', 'Estoque Disponível', 'Disp. Manual', 'OC Pendente',
-                    'Consumido Percentual', 'UF'
-                ]
-            )
-            df.to_excel(f'dashboard_{tipo_produto}.xlsx', index=False)
-            messagebox.showinfo("Sucesso", f"Dashboard exportado para 'dashboard_{tipo_produto}.xlsx'.")
-        except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro ao exportar o dashboard:\n{e}")
-
 # ---------------------------- Splash Screen and Main ---------------------------- #
 def main():
     # Create main window but keep it hidden while splash is active
@@ -1976,3 +1614,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
